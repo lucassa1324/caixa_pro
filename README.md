@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sistema de Controle de Saída de Caixa
 
-## Getting Started
+Este é um sistema de gestão de vendas e saídas de caixa desenvolvido com Next.js, que organiza os dados automaticamente em planilhas Excel estruturadas por Empresa/Ano/Mês.
 
-First, run the development server:
+## 🚀 Como rodar em outro computador
+
+Se você quiser levar este programa para outro computador, siga estes passos:
+
+### 1. Pré-requisitos
+Você precisará instalar uma das seguintes ferramentas:
+- **Node.js** (Versão 18 ou superior): [Baixar aqui](https://nodejs.org/)
+- **ou Bun** (Recomendado pela velocidade): [Baixar aqui](https://bun.sh/)
+
+### 2. Copiar os arquivos
+Copie toda a pasta `Caixa_saida` para o novo computador. 
+> **IMPORTANTE:** Se você já tem vendas cadastradas e quer mantê-las, certifique-se de copiar também a pasta onde as planilhas estão sendo salvas (por padrão é a pasta `data` dentro do projeto, a menos que você tenha alterado nos Ajustes).
+
+### 3. Instalar as dependências
+Abra o terminal (PowerShell ou CMD) dentro da pasta do projeto e rode:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Se usar npm:
+npm install
+
+# Se usar bun:
+bun install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 4. Iniciar o sistema
+Para rodar o programa, use o comando:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Modo de Desenvolvimento (para fazer alterações):
+npm run dev  # ou bun dev
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Modo de Produção (mais rápido e estável):
+npm run build
+npm run start # ou bun start
+```
 
-## Learn More
+Após rodar, o sistema estará disponível em: `http://localhost:3000`
 
-To learn more about Next.js, take a look at the following resources:
+## 📁 Estrutura de Dados
+O sistema salva as informações em arquivos `.xlsx`. A estrutura criada é:
+`[Caminho_Base]/[Nome_da_Empresa]/[Ano]/[Mês]/vendas.xlsx`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Você pode configurar o `Caminho_Base` na aba de **Ajustes** dentro do próprio sistema.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🛠️ Tecnologias
+- **Framework:** Next.js 15
+- **Estilização:** Tailwind CSS
+- **Banco de Dados:** Planilhas Excel (via ExcelJS)
+- **Ícones:** Lucide React
