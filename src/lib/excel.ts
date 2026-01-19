@@ -5,6 +5,13 @@ import path from 'path';
 const DATA_DIR_FALLBACK = path.join(process.cwd(), 'data');
 const HEADERS = ['Data', 'Valor', 'Tipo', 'Pagamento', 'Status', 'ID_Único'];
 
+export interface EstablishmentConfig {
+    id: string;
+    name: string;
+    fileName: string;
+    enabledMethods: string[];
+}
+
 export function getExcelPath(companyName: string, date?: Date) {
     // Tenta ler o caminho customizado do arquivo de configuração ou env
     let customPath = process.env.CUSTOM_DATA_PATH;
@@ -47,6 +54,55 @@ export function getExcelPath(companyName: string, date?: Date) {
     }
 
     return path.join(monthDir, 'vendas.xlsx');
+}
+
+export function getConfigPath(companyFileName: string) {
+    let customPath = process.env.CUSTOM_DATA_PATH;
+    if (customPath) {
+        customPath = customPath.replace(/^["'](.+)["']$/, '$1');
+    }
+    let baseDir = customPath ? path.resolve(customPath) : DATA_DIR_FALLBACK;
+
+    const cleanCompanyName = companyFileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const companyDir = path.join(baseDir, cleanCompanyName);
+
+    // Garante que o diretório da empresa existe
+    if (!fs.existsSync(companyDir)) {
+        fs.mkdirSync(companyDir, { recursive: true });
+    }
+
+    return path.join(companyDir, 'config.json');
+}
+
+export async function readEstablishmentConfig(companyFileName: string): Promise<EstablishmentConfig | null> {
+    const configPath = getConfigPath(companyFileName);
+    if (fs.existsSync(configPath)) {
+        const fileContent = fs.readFileSync(configPath, 'utf8');
+        return JSON.parse(fileContent) as EstablishmentConfig;
+    }
+    return null;
+}
+
+export async function saveEstablishmentConfig(config: EstablishmentConfig) {
+    const configPath = getConfigPath(config.fileName);
+    try {
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    } catch (err: any) {
+        console.error('Erro ao salvar configuração do estabelecimento:', err);
+        throw new Error(`Erro ao salvar configuração para ${config.name}: ${err.message}`);
+    }
+}
+
+export async function deleteEstablishmentConfig(companyFileName: string) {
+    const configPath = getConfigPath(companyFileName);
+    if (fs.existsSync(configPath)) {
+        try {
+            fs.unlinkSync(configPath);
+        } catch (err: any) {
+            console.error('Erro ao deletar arquivo de configuração do estabelecimento:', err);
+            throw new Error(`Erro ao deletar configuração para ${companyFileName}: ${err.message}`);
+        }
+    }
 }
 
 export async function saveToExcel(companyName: string, rows: any[]) {

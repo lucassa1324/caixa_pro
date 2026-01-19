@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { readEstablishmentConfig, saveEstablishmentConfig } from '../../../../lib/excel';
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,9 +27,10 @@ export async function GET(req: NextRequest) {
     const entries = fs.readdirSync(resolvedPath, { withFileTypes: true });
 
     // Filtra apenas diretórios que não começam com ponto (arquivos ocultos)
-    const folders = entries
+    // Processa cada pasta para carregar ou salvar configurações de métodos de pagamento
+    const folderPromises = entries
       .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
-      .map(entry => {
+      .map(async (entry) => {
         // Gera um nome legível a partir do nome da pasta (ex: mercado_oasis -> Mercado Oasis)
         const readableName = entry.name
           .replace(/_/g, ' ')
@@ -36,13 +38,39 @@ export async function GET(req: NextRequest) {
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
           .join(' ');
 
-        return {
+        const baseEstablishment = {
           id: `scan_${entry.name}`,
           name: readableName,
-          fileName: entry.name,
-          enabledMethods: ['Dinheiro', 'Pix', 'Crédito', 'Débito'] // Padrão
+          fileName: entry.name
         };
+
+        try {
+          // Carrega configurações existentes se o arquivo existir
+          const config = await readEstablishmentConfig(baseEstablishment.fileName);
+          if (config) {
+            return { ...baseEstablishment, enabledMethods: config.enabledMethods };
+          } else {
+            // Se o config.json não existe, cria um com métodos padrão
+            const defaultEnabledMethods = ['Dinheiro', 'Pix', 'Crédito', 'Débito'];
+            await saveEstablishmentConfig({
+              ...baseEstablishment,
+              enabledMethods: defaultEnabledMethods
+            });
+            return { ...baseEstablishment, enabledMethods: defaultEnabledMethods };
+          }
+        } catch (error) {
+          // Salva configurações padrão se o arquivo não existir
+          const defaultEnabledMethods = ['Dinheiro', 'Pix', 'Crédito', 'Débito'];
+          await saveEstablishmentConfig({
+            ...baseEstablishment,
+            enabledMethods: defaultEnabledMethods
+          });
+          return { ...baseEstablishment, enabledMethods: defaultEnabledMethods };
+        }
       });
+
+    // Resolve todas as promessas de processamento de pastas
+    const folders = await Promise.all(folderPromises);
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   PlusCircle, 
   BarChart3, 
@@ -22,11 +22,13 @@ import {
   ChevronDown
 } from 'lucide-react';
 
+// import { readEstablishmentConfig, saveEstablishmentConfig, deleteEstablishmentConfig, EstablishmentConfig as ExcelEstablishmentConfig } from '../lib/excel';
+
 interface Establishment {
   id: string;
   name: string;
   fileName: string;
-  enabledMethods?: string[]; // Ex: ['Dinheiro', 'Pix', 'Crédito', 'Débito']
+  enabledMethods: string[]; // Ex: ['Dinheiro', 'Pix', 'Crédito', 'Débito']
 }
 
 export default function Home() {
@@ -80,35 +82,59 @@ export default function Home() {
 
   // Load data from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('establishments');
-    const activeId = localStorage.getItem('active_establishment_id');
-    const savedBasePath = localStorage.getItem('base_path');
-    
-    if (savedBasePath) {
-      setBasePath(savedBasePath);
-    }
-
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Migração: Se houver dados antigos com sheetId mas sem fileName ou enabledMethods
-        const migrated = parsed.map((est: any) => ({
-          ...est,
-          fileName: est.fileName || est.sheetId || 'vendas_sem_nome',
-          enabledMethods: est.enabledMethods || ALL_PAYMENT_METHODS
-        }));
-        
-        setEstablishments(migrated);
-        
-        if (activeId && migrated.find((e: Establishment) => e.id === activeId)) {
-          setActiveEstablishmentId(activeId);
-        } else if (migrated.length > 0) {
-          setActiveEstablishmentId(migrated[0].id);
-        }
-      } catch (e) {
-        console.error('Erro ao carregar dados do localStorage', e);
+    const loadEstablishmentsAndConfigs = async () => {
+      const saved = localStorage.getItem('establishments');
+      const activeId = localStorage.getItem('active_establishment_id');
+      const savedBasePath = localStorage.getItem('base_path');
+      
+      if (savedBasePath) {
+        setBasePath(savedBasePath);
       }
-    }
+
+      let loadedEstablishments: Establishment[] = [];
+
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          // Migração: Se houver dados antigos com sheetId mas sem fileName ou enabledMethods
+          const migrated = parsed.map((est: any) => ({
+            ...est,
+            fileName: est.fileName || est.sheetId || 'vendas_sem_nome',
+            enabledMethods: est.enabledMethods || ALL_PAYMENT_METHODS // Fallback para ALL_PAYMENT_METHODS
+          }));
+          
+          // Para cada estabelecimento, tenta ler o config.json
+          const establishmentsWithConfigs = await Promise.all(migrated.map(async (est: Establishment) => {
+            try {
+              const response = await fetch(`/api/config/read?companyFileName=${est.fileName}`);
+              if (response.ok) {
+                const config = await response.json();
+                return { ...est, enabledMethods: config.enabledMethods };
+              } else {
+                console.warn(`Não foi possível ler config.json para ${est.fileName} via API, usando dados do localStorage. Status: ${response.status}`);
+              }
+            } catch (e) {
+              console.warn(`Erro ao buscar config.json para ${est.fileName} via API, usando dados do localStorage.`, e);
+            }
+            return est; // Usa os dados do localStorage/migrados se não houver config.json ou erro
+          }));
+
+          loadedEstablishments = establishmentsWithConfigs;
+          
+          setEstablishments(loadedEstablishments);
+          
+          if (activeId && loadedEstablishments.find((e: Establishment) => e.id === activeId)) {
+            setActiveEstablishmentId(activeId);
+          } else if (loadedEstablishments.length > 0) {
+            setActiveEstablishmentId(loadedEstablishments[0].id);
+          }
+        } catch (e) {
+          console.error('Erro ao carregar dados do localStorage ou configs:', e);
+        }
+      }
+    };
+
+    loadEstablishmentsAndConfigs();
   }, []);
 
   const activeEstablishment = establishments.find(e => e.id === activeEstablishmentId);
@@ -184,43 +210,76 @@ export default function Home() {
     }
   }, [activeTab, activeEstablishmentId, selectedMonth, activeEstablishment?.fileName]);
 
-  const addEstablishment = () => {
+  const addEstablishment = async () => {
     if (!newEstName?.trim()) return;
     
     // O ID/Nome da pasta será baseado no nome do estabelecimento
     const fileName = newEstName.trim().replace(/[^a-zA-Z0-9.\-_]/g, '_');
     
+    let updatedEstablishments: Establishment[];
+    let currentEst: Establishment | undefined;
+
     if (editingId) {
-      // Update existing
-      const updated = establishments.map(est => 
-        est.id === editingId 
-          ? { ...est, name: newEstName.trim(), fileName, enabledMethods: newEstMethods } 
-          : est
-      );
-      setEstablishments(updated);
-      localStorage.setItem('establishments', JSON.stringify(updated));
-      setMessage({ text: 'Estabelecimento atualizado!', type: 'success' });
-      setEditingId(null);
+      // Find the establishment to update
+      const existingEstIndex = establishments.findIndex(est => est.id === editingId);
+      if (existingEstIndex > -1) {
+        currentEst = {
+          ...establishments[existingEstIndex],
+          name: newEstName.trim(),
+          fileName,
+          enabledMethods: newEstMethods
+        };
+        updatedEstablishments = [
+          ...establishments.slice(0, existingEstIndex),
+          currentEst,
+          ...establishments.slice(existingEstIndex + 1)
+        ];
+        setMessage({ text: 'Estabelecimento atualizado!', type: 'success' });
+        setEditingId(null);
+      } else {
+        console.error("Editing ID not found:", editingId);
+        setMessage({ text: 'Erro: Estabelecimento a ser atualizado não encontrado.', type: 'error' });
+        return;
+      }
     } else {
       // Add new
-      const newEst: Establishment = {
+      currentEst = {
         id: Date.now().toString(),
         name: newEstName.trim(),
         fileName,
         enabledMethods: newEstMethods
       };
 
-      const updated = [...establishments, newEst];
-      setEstablishments(updated);
-      localStorage.setItem('establishments', JSON.stringify(updated));
+      updatedEstablishments = [...establishments, currentEst];
       
       if (!activeEstablishmentId) {
-        setActiveEstablishmentId(newEst.id);
-        localStorage.setItem('active_establishment_id', newEst.id);
+        setActiveEstablishmentId(currentEst.id);
+        localStorage.setItem('active_establishment_id', currentEst.id);
       }
       setMessage({ text: 'Estabelecimento adicionado!', type: 'success' });
     }
 
+    setEstablishments(updatedEstablishments);
+    localStorage.setItem('establishments', JSON.stringify(updatedEstablishments));
+    
+    // Salva a configuração no arquivo config.json
+    if (currentEst) {
+      try {
+        await fetch('/api/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: currentEst.id,
+            name: currentEst.name,
+            fileName: currentEst.fileName,
+            enabledMethods: currentEst.enabledMethods
+          })
+        });
+      } catch (error) {
+        console.error('Erro ao salvar config.json:', error);
+        setMessage({ text: `Erro ao salvar configuração do estabelecimento: ${error instanceof Error ? error.message : String(error)}`, type: 'error' });
+      }
+    }
     setNewEstName('');
     setNewEstFileName('');
     setNewEstMethods(ALL_PAYMENT_METHODS);
@@ -243,7 +302,30 @@ export default function Home() {
     setNewEstMethods(ALL_PAYMENT_METHODS);
   };
 
-  const removeEstablishment = (id: string) => {
+  const removeEstablishment = async (id: string) => {
+    const estToRemove = establishments.find(e => e.id === id);
+    if (!estToRemove) return;
+
+    if (!confirm(`Tem certeza que deseja remover o estabelecimento "${estToRemove.name}"? Isso também excluirá suas configurações.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/config/delete?companyFileName=${estToRemove.fileName}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete config');
+      }
+      setMessage({ text: 'Configuração do estabelecimento excluída!', type: 'success' });
+    } catch (error) {
+      console.error('Erro ao deletar config.json:', error);
+      setMessage({ text: `Erro ao deletar configuração do estabelecimento: ${error instanceof Error ? error.message : String(error)}`, type: 'error' });
+      // Decide if you want to stop here or proceed with local removal even if config file deletion fails
+      // For now, we'll proceed with local removal
+    }
+
     const updated = establishments.filter(e => e.id !== id);
     setEstablishments(updated);
     localStorage.setItem('establishments', JSON.stringify(updated));
@@ -254,6 +336,7 @@ export default function Home() {
       if (nextId) localStorage.setItem('active_establishment_id', nextId);
       else localStorage.removeItem('active_establishment_id');
     }
+    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
   };
 
   const selectEstablishment = (id: string) => {
